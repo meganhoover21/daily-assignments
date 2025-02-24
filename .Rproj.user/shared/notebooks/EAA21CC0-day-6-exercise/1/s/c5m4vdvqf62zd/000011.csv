@@ -1,0 +1,4 @@
+"0","library(tidyverse)"
+"0","url = 'https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties-recent.csv'"
+"0","covid = read_csv(url)"
+"0","head(covid, 5)"

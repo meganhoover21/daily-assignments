@@ -1,0 +1,5 @@
+"0","#select the date, county and case columns."
+"0","a<- covid |>"
+"0","  select(date, county, cases)"
+"0","#filter the date"
+"0","filter(a, date==max(date))"
