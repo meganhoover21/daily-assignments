@@ -1,0 +1,205 @@
+---
+title: "day11-12"
+author: "Megan Hoover"
+date: "2025-03-11"
+format: html
+execute:
+  echo: true
+output:
+  html
+   self-contained:true
+knitr:
+  opts_chunk:
+    collapse: true
+    comment: "#>"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+##In Exploratory data Analysis (2016) Peng usefully includes an EDA checklist:
+```{r}
+penguins<-palmerpenguins::penguins_raw
+library(visdat)
+library(tidyr)
+library(tidyverse)
+library(ggpubr)
+```
+
+
+# 1. Develop a question.
+Usually we start EDA with a question that helps focus our interrogation.
+
+Is there a relationship between island location and body size weight a in the palmer penguins dataset?
+
+
+# 2. Read in your data and check the structure. 
+Questions to ask:
+What are the dimensions of the data (rows, columns)?
+What are the variable types?
+Have character variables been coerced to factors? If so, is that appropriate?
+Which numeric variables are continuous, which are integers, and which are binary?
+```{r}
+str(penguins)
+sapply(penguins, is.numeric)
+```
+What are the dimensions of the data? There are 344 rows and 17 columns in this dataset.
+
+What are the variable types? Penguins data is a list that has tbl_df, tbl, and data.frame structure. The variable types include numbers, characters, and dates.
+
+Have character variables been coerced to factors? If so, is that appropriate? No character variables have been coerced to factors in this data set. It could be appropriate depending on the analysis done, for penguin species a number could be given to represent the kind.
+
+# Which numeric variables are continuous (these variables are numeric, but they can take on any value within a range, including decimals ), which are integers(these variables have discrete values with no decimal points), and which are binary (binary variables typically have only two unique values, such as 0 and 1, "yes" and "no", or "TRUE" and "FALSE")?
+```{r}
+str(penguins)
+```
+Culmen length, culmen depth, Delta 15N, and and Delta 13 c are continuous data in this tibble.The discrete values are the sample number,flipper length, and body mass.Binary data in this are clutch completion and sex.
+ 
+ 
+# 3. Summarize the data.Use summary() and table(), vis_dat() and ask the following sorts of questions:
+```{r}
+summary(penguins)
+vis_dat(penguins)
+
+penguins <-penguins %>%
+  drop_na()
+
+#range
+range(penguins$`Sample Number`)
+range(penguins$`Culmen Length (mm)`)
+range(penguins$`Culmen Depth (mm)`)
+range(penguins$`Flipper Length (mm)`)
+range(penguins$`Body Mass (g)`)
+range(penguins$`Delta 15 N (o/oo)`)
+range(penguins$`Delta 13 C (o/oo)`)
+
+```
+
+
+# Are there missing observations?
+
+There's missing values/ na values in the clutch completion, comments, Delta 15N and Delta 13c columns,
+
+# What is the range of the numeric variables?
+
+The range of sample numbers: 1-152
+The range of culmen length (mm):35.9-58.0
+The range of culmen depth (mm): 13.7- 20.0
+The range of flipper length (mm):172 -225
+The range of body mass(g): 2700 - 5700
+The range of delta 15n: 7.99184 - 10.02544
+The range of delta delta 13c:-26.84272 - -23.89017
+
+# Do the ranges seem reasonable, or are there values that cause you to worry about data quality? 
+
+These ranges seem normal, except for the delta 13c. There are negative numbers in the data.
+
+# Where are the means and medians of each variable with respect to their minimums and maximums?
+```{r}
+#mean
+summary(penguins$`Sample Number`)       #mean= 51.71 median=39.00
+summary(penguins$`Culmen Length (mm)`)  #mean= 44.71 median=44.50
+summary(penguins$`Culmen Depth (mm)`)   #mean= 17.65 median=17.90
+summary(penguins$`Flipper Length (mm)`) #mean= 196.7 median=195.5
+summary(penguins$`Body Mass (g)`)       #mean= 3877  median= 3738
+summary(penguins$`Delta 15 N (o/oo)`)   #mean= 9.019 median= 9.041
+summary(penguins$`Delta 13 C (o/oo)`)   #mean= -25.33 median=-25.33
+```
+
+
+For factor and character variables: How many observations are there in each level or category?
+```{r}
+penguins %>%
+  count(Species) 
+
+penguins %>%
+  count(Island)
+
+penguins %>%
+  count(Sex)
+```
+species:
+Species                                       n
+  <chr>                                     <int>
+1 Adelie Penguin (Pygoscelis adeliae)          13
+2 Chinstrap penguin (Pygoscelis antarctica)    14
+3 Gentoo penguin (Pygoscelis papua)             7
+
+island:
+Island        n
+  <chr>     <int>
+1 Biscoe        9
+2 Dream        17
+3 Torgersen     8
+
+sex:
+Sex        n
+  <chr>  <int>
+1 FEMALE    18
+2 MALE      16
+
+
+Table the integer and binary variables: do the counts seem reasonable? If they don’t seem reasonable, then inspect the questionable rows.
+```{r}
+#The integer column is flipper_length_mm, and the binary variable is sex
+
+table(penguins$`Flipper Length (mm)`)
+
+# Table the binary variable: sex
+table(penguins$Sex)
+
+```
+These counts seem reasonable in the table.
+
+# 4:Look at the top and the bottom of your data using head() and tail(). 
+This will give you a sense of the structure of the data and the type of variables you are dealing with.
+```{r}
+# View the first few rows (top of the dataset)
+head(penguins)
+
+# View the last few rows (bottom of the dataset)
+tail(penguins)
+
+```
+
+Be alert to structure and possible data problems or anomalies.
+Use skimr::skim() to get a quick overview of the data structure and missing values.
+```{r}
+skimr::skim(penguins)
+```
+
+
+# 5. Try to answer your question using descriptive measures.
+These can include evaluating distributions, central tendency and variation.
+```{r}
+# Summary statistics of body mass by island
+penguins_summary <- penguins %>%
+  group_by(Island) %>%
+  summarise(
+    mean_weight = mean(`Body Mass (g)`, na.rm = TRUE),
+    median_weight = median(`Body Mass (g)`, na.rm = TRUE),
+    sd_weight = sd(`Body Mass (g)`, na.rm = TRUE),
+    min_weight = min(`Body Mass (g)`, na.rm = TRUE),
+    max_weight = max(`Body Mass (g)`, na.rm = TRUE)
+  )
+
+# View summary statistics
+print(penguins_summary)
+
+#A higher standard deviation indicates more variability, and a lower standard deviation suggests that most values are closer to the mean.
+
+#median is a measure of central tendency that is less sensitive to outliers or skewed data than the mean.
+
+#Visualization
+# Histogram of body mass by island
+ggplot(penguins, aes(x = `Body Mass (g)`, fill = Island)) +
+  geom_histogram(binwidth = 100, position = "dodge", alpha = 0.7) +
+  labs(title = "Body Mass Distribution by Island",
+       x = "Body Mass (grams)", y = "Frequency") +
+  facet_wrap(~Island) +
+  theme_minimal()
+```
+Penguins on Biscoe island have the highest average (mean) and median body mass, followed by those on Torgersen, and then Dream island. This central tendency suggests a relationship between island and body mass. The highest variability in body size is in Biscoe penguins, but even with higher variability they have bigger body sizes on Biscoe island.
+
+6. Follow up with additional questions

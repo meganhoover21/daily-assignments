@@ -1,0 +1,88 @@
+---
+project:
+  title: "day-09"
+  output-dir: docs
+
+format:
+  html:
+    self-contained: true
+---
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#load and install libraries
+```{r}
+options(repos = c(CRAN = "https://cran.rstudio.com"))
+install.packages("visdat")
+
+library(tidyverse)
+install.packages("visdat")
+library(visdat)
+```
+
+# Does the data need cleaning after checking with vis_dat? 
+```{r}
+#ozone is one predictor variable, need to pick a different one to preict ozone predictor variable
+airquality1=airquality  #load air quality data from r. 
+?airquality
+
+vis_dat(airquality1)
+vis_miss(airquality1)
+#This data has missing integer values in the ozone and solar R columns
+
+
+airquality1<- airquality1 %>% #remove na values
+  drop_na()
+
+vis_miss(airquality1)  #now all data is present
+```
+# There is na values in the data that needed to be cleaned. After removing the missing data, there were no issues with it.
+
+
+# Fit a linear model to the cleaned data to predict Ozone from one of the possible predictors of your choosing. Why did you chose thats variable?
+```{r}
+#formula for linear model lm(y ~ x, data= data set) Choosing solar R bc can see in the table as it goes up, so does the ozone.
+airquality_lm<- lm(Ozone ~ Solar.R, data= airquality1)
+
+summary(airquality_lm) #shows statistic summary. r^2 is .5, which shows that there's 50% variance in dependent variable
+
+#The r^2 value of .5 indicates the ozone can be predicted given the value of the solar radiations
+
+```
+# I chose solar R as a predictor value because I can see in the table that as it goes up, so does the ozone. After running the summary, the r^2 is .5, which shows that there's 50% variance in dependent variable.The r^2 value of .5 indicates the ozone can be predicted given the value of the solar radiations.
+
+# Use broom::augment to predict the Ozone of the cleaned data. Use ggplot to plot the actual vs predicted Ozone
+```{r}
+#Use broom::augment to predict the Ozone of the cleaned data
+library(broom)
+augmented_covid <- augment(airquality_lm, data = airquality1)
+
+
+# Create a ggplot of actual vs predicted Ozone
+ggplot(augmented_covid, aes(x = .fitted, y = Ozone)) +
+  geom_point(color = "blue") +             # Actual vs predicted points
+  geom_abline(intercept = 0, slope = 1,   # Line y = x for comparison
+              color = "red", linetype = "dashed") +  # Reference line
+  labs(title = "Actual vs Predicted Ozone",
+       x = "Predicted Ozone",
+       y = "Actual Ozone") +
+  theme_minimal()
+```
+
+
+# Create a ggplot of actual vs predicted Ozone with a subtitle showing the correlation
+```{r}
+correlation_value <- round(cor(augmented_covid$Ozone, augmented_covid$.fitted), 2)
+
+ggplot(augmented_covid, aes(x = .fitted, y = Ozone)) +
+  geom_point(color = "blue") +             # Actual vs predicted points
+  geom_abline(intercept = 0, slope = 1,   # Line y = x for comparison
+              color = "red", linetype = "dashed") +  # Reference line
+  labs(title = "Actual vs Predicted Ozone",
+       subtitle = paste("Correlation:", correlation_value),
+       x = "Predicted Ozone",
+       y = "Actual Ozone") +
+  theme_minimal()
+```
+
