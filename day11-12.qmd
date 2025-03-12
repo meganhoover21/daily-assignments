@@ -25,6 +25,9 @@ library(visdat)
 library(tidyr)
 library(tidyverse)
 library(ggpubr)
+library(recipes)
+library(broom)
+library(gridExtra)
 ```
 
 
@@ -202,4 +205,218 @@ ggplot(penguins, aes(x = `Body Mass (g)`, fill = Island)) +
 ```
 Penguins on Biscoe island have the highest average (mean) and median body mass, followed by those on Torgersen, and then Dream island. This central tendency suggests a relationship between island and body mass. The highest variability in body size is in Biscoe penguins, but even with higher variability they have bigger body sizes on Biscoe island.
 
-6. Follow up with additional questions
+## Daily assignment 12
+
+Part 1: Normality Testing
+Load the airquality dataset in R. What does this dataset represent? Explore its structure using functions like str() and summary().
+```{r}
+airquality<-airquality
+?airquality
+str(airquality)
+summary(airquality)
+```
+The air quality data set represents daily air quality measurements during May to September, 1973, in New York.
+
+Perform a Shapiro-Wilk normality test on the following variables: Ozone, Temp, Solar.R, and Wind.
+```{r}
+# Perform Shapiro-Wilk normality test
+shapiro.test(airquality$Ozone)
+shapiro.test(airquality$Temp)
+shapiro.test(airquality$Solar.R)
+shapiro.test(airquality$Wind)
+
+```
+
+
+# What is the purpose of the Shapiro-Wilk test?
+
+It's a statistical test to check whether the data follows a normal distribution.
+
+
+# What are the null and alternative hypotheses for this test?
+
+The null hypothesis Ho: The data follows a normal distribution.
+The alternative hypothesis H1: The data doesn't follow a normal distribution
+
+
+# Interpret the p-values. Are these variables normally distributed?
+
+If the p-value is greater than 0.05: We fail to reject the null hypothesis, meaning that the data is not significantly different from a normal distribution.
+If the p-value is less than or equal to 0.05: We reject the null hypothesis, meaning that the data is significantly different from a normal distribution, suggesting that the data isn't normally distributed.
+
+Shapiro-Wilk normality test
+data:  airquality$Ozone
+W = 0.87867, p-value = 2.79e-08
+
+The Ozone data variables are normally distributed.
+
+
+	Shapiro-Wilk normality test
+data:  airquality$Temp
+W = 0.97617, p-value = 0.009319
+
+Temp data variables are not normally distributed.
+
+
+	Shapiro-Wilk normality test
+data:  airquality$Solar.R
+W = 0.94183, p-value = 9.492e-06
+
+Solar. R variables are normally distributed.
+
+
+	Shapiro-Wilk normality test
+data:  airquality$Wind
+W = 0.98575, p-value = 0.1178
+
+Wind variables aren't normally distributed.
+
+# Part 2: Data Transformation and Feature Engineering
+Create a new column with case_when tranlating the Months into four seasons (Winter (Nov, Dec, Jan), Spring (Feb, Mar, Apr), Summer (May, Jun, Jul), and Fall (Aug, Sep, Oct)).
+```{r}
+# don't remove na values yet
+airquality_seasons <- airquality 
+
+# Create a new column 'Season' based on the 'Month' column
+# case_when(): This function allows you to assign values to a new column based on conditions. 
+airquality_seasons <- airquality_seasons %>%
+  mutate(season = case_when(
+    Month == 11 | Month == 12 | Month == 1 ~ "Winter",
+    Month == 2 | Month == 3 | Month == 4 ~ "Spring",
+    Month == 5 | Month == 6 | Month == 7 ~ "Summer",
+    Month == 8 | Month == 9 | Month == 10 ~ "Fall",
+    TRUE ~ "Unknown"  # Handling any missing values (NA) if necessary
+  ))
+```
+
+
+Use table to figure out how many observations we have from each season.
+```{r}
+# Count the number of observations for each season
+table(airquality_seasons$season)
+
+```
+
+
+# Part 3: Data Preprocessing
+Normalize the predictor variables (Temp, Solar.R, Wind, and Season) using a recipe
+```{r}
+#  recipe to normalize the variables Temp, Solar.R, and Wind
+recipe_normalize <- recipe(~ Temp + Solar.R + Wind + season, data = airquality_seasons) %>%
+  # Impute missing values with the mean for numeric columns
+  step_impute_mean(all_numeric(), -all_outcomes()) %>%
+  # Normalize the numeric predictors variables (Temp, Solar.R, Wind) to have a mean of 0 and a standard deviation of 1.
+  step_normalize(all_numeric(), -all_outcomes())
+
+
+# Preview the recipe
+recipe_normalize
+
+```
+
+
+# What is the purpose of normalizing data?
+
+To make sure all variables used for predictors equally contribute, without one being over scaled.
+
+# What function can be used to impute missing values with the mean?
+
+the function step_impute can be used to impute missing numeric values.
+
+# prep and bake the data to generate a processed dataset.
+```{r}
+# Prepare the recipe (estimate means and scaling parameters)
+recipe_prep <- prep(recipe_normalize, training = airquality_seasons)
+
+# Apply the transformations to the data (bake)
+airquality_processed <- bake(recipe_prep, new_data = airquality_seasons)
+
+# View the processed dataset
+head(airquality_processed)
+```
+
+
+# Why is it necessary to both prep() and bake() the recipe?
+
+Prep prepares the data for the transformation by estimating parameters with the training data, while bake applies the transformation on the data. 
+
+# Part 4: Building a Linear Regression Model
+Fit a linear model using Ozone as the response variable and all other variables as predictors. Remember that the . notation can we used to include all variables.
+```{r}
+# Fit the linear regression model. lm() function to fit the model, and the . notation to include all predictor variables automatically.
+airquality_lm <- lm(Ozone ~ ., data = airquality_seasons) 
+
+  summary(airquality_lm)
+```
+
+
+# Interpret the model summary output (coefficients, R-squared, p-values) in plain language
+
+The coefficients represent the change in the Ozone level for each one-unit increase in a paired predictor, holding the other predictors constant.The R-squared is interpreted as a percentage that can explain the variability of the model. P values in this tell whether or not a predictor variable is significantly contributing to the model; p-values less than .05 mean that the predictor variable is statistically significant. The variables in this model are mainly not statistically significant.
+
+# Part 5: Model Diagnostics
+Use broom::augment to suppliment the normalized data.frame with the fitted values and residuals.
+```{r}
+# broom::augment() function can be used to add the fitted values and residuals to your data
+
+#remove the na values
+airquality_nona <- na.omit(airquality_seasons)
+
+# Augment the data with fitted values and residuals
+augmented_data <- augment(airquality_lm, data = airquality_nona)
+
+# View the first few rows of the augmented data
+head(augmented_data)
+```
+
+
+# Extract the residuals and visualize their distribution as a histogram and qqplot.
+```{r}
+# Histogram of residuals
+hist_plot <- ggplot(augmented_data, aes(x = .resid)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  labs(title = "Histogram of Residuals", x = "Residuals", y = "Frequency") +
+  theme_minimal()
+
+# Q-Q plot of residuals
+qq_plot <- ggplot(augmented_data, aes(sample = .resid)) +
+  geom_qq() +
+  geom_qq_line() +
+  labs(title = "Q-Q Plot of Residuals") +
+  theme_minimal()
+```
+
+
+# Use ggarange to plot this as one image and interpret what you see in them.
+```{r}
+# Use ggarrange to combine the two plots into one image
+grid.arrange(hist_plot, qq_plot, ncol = 2)
+```
+
+
+# Create a scatter plot of actual vs. predicted values using ggpubr with the following setting:
+
+ggscatter(a, x = "Ozone", y = ".fitted",
+          add = "reg.line", conf.int = TRUE,
+          cor.coef = TRUE, cor.method = "spearman",
+          ellipse = TRUE)
+```{r}
+# Scatter plot of Actual vs. Predicted Ozone
+ggscatter(augmented_data, x = "Ozone", y = ".fitted",
+          add = "reg.line", conf.int = TRUE,
+          cor.coef = TRUE, cor.method = "spearman",
+          ellipse = TRUE) +
+  labs(title = "Actual vs. Predicted Ozone") +
+  theme_minimal()
+```
+          
+
+# How strong of a model do you think this is?
+
+This appears to be a strong model with a somewhat linear trend. There's a random scatter of points around the regression line suggesting that the model is a good fit for the data.
+
+Render your document to HTML and submit to Canvas. Be sure to include this in your document yml:
+
+format: 
+  html:
+    self-contained: true
