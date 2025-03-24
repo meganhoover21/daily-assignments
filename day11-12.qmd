@@ -2,7 +2,9 @@
 title: "day11-12"
 author: "Megan Hoover"
 date: "2025-03-11"
-format: html
+format:
+  html:
+    self-contained: true
 execute:
   echo: true
 output:
