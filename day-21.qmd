@@ -1,0 +1,70 @@
+---
+project:
+  title: "day-21"
+  output-dir: docs
+
+format:
+  html:
+    self-contained: true
+format: html
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# First, use this code to download the data from the USGS site.
+```{r}
+library(dataRetrieval)
+library(tidyverse)
+library(lubridate)
+library(tidymodels)
+install.packages("tsibble")
+library(tsibble)
+library(plotly)
+install.packages("feasts")
+library(feasts) #autoplot visualizations
+
+#If you prefer to keep the date as a date object, you can use lubridate::year() and lubridate::month() to extract the year and month, and then combine them:
+
+
+
+poudre_flow <- readNWISdv(siteNumber = "06752260",    # Download data from USGS for site 06752260
+                          parameterCd = "00060",      # Parameter code 00060 = discharge in cfs
+                          startDate = "2013-01-01",   # Set the start date
+                          endDate = "2023-12-31") |>  # Set the end date
+  renameNWISColumns() |>                              # Rename columns to standard names (e.g., "Flow", "Date")
+  mutate(Date = as.Date(Date, format = "%Y-%m")) |>  # Create a Year-Month column as "YYYY-MM"
+  group_by(Date) |>                         # Group by the new Year-Month column
+  summarise(Flow = mean(Flow, na.rm = TRUE))           # Calculate the average daily flow for each month
+
+```
+
+# Convert to tsibble: Use as_tsibble() to convert the data.frame into a tsibble object. This will allow you to use the feast functions for time series analysis.
+```{r}
+# Assuming you already have 'poudre_flow' with the "Date_YearMonth" column as shown earlier
+poudre_flow_tsibble <- poudre_flow %>%
+  as_tsibble()  # Convert to tsibble using Date as the time index
+
+```
+
+# Plotting the time series: Use ggplot to plot the time series data. Animate this plot with plotly
+```{r}
+p_plot<- poudre_flow_tsibble %>%
+  autoplot() +
+  geom_line(color= "purple") +
+  labs(
+    title= "Interactive time series plot of the Poudre Rive flow",
+    x= "Date",
+    y= "Flow")
+  
+ggplotly(p_plot)
+```
+
+
+# 3. Subseries: Use gg_subseries to visualize the seasonal patterns in the data. This will help you identify any trends or seasonal cycles in the streamflow data. Describe what you see in the plot. How are “seasons” defined in this plot? What do you think the “subseries” represent?
+```{r}
+
+```
+
