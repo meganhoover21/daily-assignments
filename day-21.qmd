@@ -6,7 +6,6 @@ project:
 format:
   html:
     self-contained: true
-format: html
 ---
 
 ```{r setup, include = FALSE}
@@ -20,11 +19,10 @@ library(dataRetrieval)
 library(tidyverse)
 library(lubridate)
 library(tidymodels)
-install.packages("tsibble")
 library(tsibble)
 library(plotly)
-install.packages("feasts")
 library(feasts) #autoplot visualizations
+library(fable)
 
 #If you prefer to keep the date as a date object, you can use lubridate::year() and lubridate::month() to extract the year and month, and then combine them:
 
@@ -66,5 +64,36 @@ ggplotly(p_plot)
 # 3. Subseries: Use gg_subseries to visualize the seasonal patterns in the data. This will help you identify any trends or seasonal cycles in the streamflow data. Describe what you see in the plot. How are “seasons” defined in this plot? What do you think the “subseries” represent?
 ```{r}
 
-```
+#make month column to predict seasons + group by them
+poudre_flow_tsibble <- poudre_flow_tsibble %>%
+  mutate(month = month(Date)) %>%
+  group_by(month)
 
+gg_subseries(poudre_flow_tsibble, Flow) +
+  labs(title= "Seasonal Patterns in Poudre River Stream Flow",
+       y= "Stream Flow",
+       x= "month",
+       color= month) +
+  theme(
+    text = element_text(size = 10),             # Reduce font size
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis text if needed
+    strip.text = element_text(size = 9)          # Resize month labels (facets)
+  ) +
+  theme_minimal()
+  
+```
+The series shows a default of 12 months in the cycle, however it's very disorganized. If it was beginning from January (1) than the trend shows that in the winter the flow is lower, then begins to pick up in spring months, before falling in summer and autumn months. Some years have better flow in their months. The subseries represents the months within the data for each year. 
+
+
+# Decompose: Use the model(STL(...)) pattern to decompose the time series data into its components: trend, seasonality, and residuals. Chose a window that you feel is most appropriate to this data. Describe what you see in the plot. How do the components change over time? What do you think the trend and seasonal components represent?
+```{r}
+# STL decomposition model doesn't assume constant seasonal effect like decompose()
+
+# Convert to a regular time series object for STL (monthly data)
+flow_ts <- ts(poudre_flow_tsibble$Flow, start = c(2013, 1), frequency = 12)
+
+# Apply STL decomposition
+stl_decomposed <- stl(flow_ts, s.window = "periodic") %>%
+  plot()
+```
+This plot shows the seasonal trends from 2013 and predicts them up until about 2350. They follow typical oscillations that occur on a yearly basis, except they slowly start having lower maximum flows. The trend could represent the effects of climate change on the river flows over time, and the seasonal component is driven by the typical natural biological processes as well as climate change (some seasons may start to get slightly shorter).
