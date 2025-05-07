@@ -1,0 +1,193 @@
+---
+title: "day-25-mississippi"
+author: "Megan Hoover"
+format:
+  html:
+    self-contained: true
+
+---
+
+# Assignment 25
+
+You have been tasked by the USACE of identify the urban population living along the Mississippi River system
+
+You are interested in the county level since most flood control measures and flood response efforts are enforced by county EMAs
+
+As such, you will need to identify the counties that intersect the Mississippi River system and then sum the population of the cities within those counties.
+
+Your final results should be a map of the counties that intersect the Mississippi River system, colored by the total urban population in each county.
+
+
+
+# Step 1 - 3:
+
+1. Navigate to here (https://datacatalog.worldbank.org/search/dataset/0042032) to download a shapefile fof the major world rivers.
+2. Unzip it and read in the shp file with read_sf.
+3. Filter it to include only the Mississippi River system.
+
+
+
+
+Load Libraries
+```{r}
+library(tidyverse)
+library(sf)
+library(AOI)
+library(ggrepel)
+library(readr)
+library(tigris)
+library(tmap)
+```
+
+
+Read in the data:
+```{r}
+# Read in the shapefile
+rivers <- read_sf("C:/Users/samho/Desktop/ESS330/github/daily-assignments/data/majorrivers_0_0/MajorRivers.shp")
+
+# Preview the data
+plot(rivers["NAME"])
+
+#filter the mississippi river system
+miss_river <- rivers %>%
+  filter(SYSTEM == "Mississippi")
+
+# Get all county boundaries in CONUS
+# Get all CONUS states
+conus_states <- aoi_get(state = c(
+  "Alabama", "Arizona", "Arkansas", "California", "Colorado", "Connecticut",
+  "Delaware", "Florida", "Georgia", "Idaho", "Illinois", "Indiana", "Iowa",
+  "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts",
+  "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska",
+  "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York",
+  "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon",
+  "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
+  "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
+  "West Virginia", "Wisconsin", "Wyoming"
+))
+
+# Convert to state abbreviations using base R
+state_abbrevs <- state.abb[match(conus_states$state, state.name)]
+
+# List of state abbreviations for the contiguous U.S.
+state_abbrevs <- state.abb[!state.abb %in% c("AK", "HI")]
+
+
+#use tigris to get counties that intersect those states:
+
+# Get all counties (you could also loop over states if needed)
+all_counties <- counties(cb = TRUE, year = 2020, class = "sf")
+
+# Transform the CRS of counties to match the CRS of the Mississippi River system
+all_counties_sf <- st_transform(all_counties, st_crs(miss_river))
+
+# Transform conus_states CRS to match the CRS of all_counties
+conus_states_sf <- st_transform(conus_states, st_crs(all_counties))
+
+
+#Now that both all_counties and conus_states are in the same CRS, you can safely perform the spatial operation to filter counties that intersect with the CONUS states.
+
+# Filter counties that intersect with the CONUS states
+conus_counties <- all_counties[st_intersects(all_counties, conus_states_sf, sparse = FALSE), ]
+
+# Pull counties for each state and combine. This will give you a single sf object (all_counties) with the boundaries of all counties in the continental U.S.
+
+all_counties <- purrr::map_df(state_abbrevs, ~ tigris::counties(state = .x, cb = TRUE, year = 2020, class = "sf"))
+
+all_counties <- purrr::map_df(state_abbrevs, function(state) {
+  counties_data <- tryCatch(
+    {
+      tigris::counties(state = state, cb = TRUE, year = 2020, class = "sf")
+    },
+    error = function(e) {
+      message(paste("Error fetching data for state:", state))
+      NULL  # Return NULL if there's an error
+    })
+
+# Assuming miss_river has the correct CRS
+all_counties <- st_transform(all_counties, st_crs(miss_river))
+
+```
+
+
+
+# Steps 5-6
+
+5. Use st_filter to identify the counties that intersect the Mississippi River system.
+6. Make a map of the counties that intersect the Mississippi River system, along with the rivers themselves.
+
+```{r}
+
+# Convert all_counties to sf object if it's not already
+all_counties_sf <- st_as_sf(all_counties)
+
+# Filter counties that intersect the Mississippi River system
+# Use st_filter to get counties intersecting the Mississippi River system
+counties_miss <- st_filter(all_counties, miss_river, .predicate = st_intersects)
+```
+
+```{r}
+# Get counties for the contiguous U.S.
+conus_counties <- AOI::aoi_get(state = AOI::aoi_states(exclude = c("AK", "HI")), type = "county")
+
+#if doesn't work then use tigris
+options(tigris_use_cache = FALSE)
+conus_counties <- counties(cb = TRUE, year = 2020, class = "sf")
+
+conus_counties <- st_transform(conus_counties, st_crs(miss_river))
+
+#identify counties intersecting the river
+counties_miss <- st_filter(conus_counties, miss_river, .predicate = st_intersects)
+
+#map
+tmap_mode("plot")
+
+tm_shape(conus_counties) +
+  tm_borders(col = "lightgray") +
+tm_shape(counties_miss) +
+  tm_fill(col = "steelblue", alpha = 0.6, title = "Intersecting Counties") +
+tm_shape(miss_river) +
+  tm_lines(col = "darkblue", lwd = 1.2) +
+tm_layout(title = "Counties Intersecting Mississippi River System")
+
+```
+```{r}
+#transform crs to albers equal area
+miss_river <- st_transform(miss_river, 5070)
+
+conus_counties <- st_transform(conus_counties, 5070)
+
+#read in city data from last project
+cities <- read_csv("data/uscities.csv")
+
+cities_sf <- st_as_sf(cities, coords = c("lng", "lat"), crs = 4326)
+cities_sf <- st_transform(cities_sf, 5070)# EPSG:5070 = NAD83 / Conus Albers
+
+# Filter counties that intersect the Mississippi River system
+counties_miss <- st_filter(conus_counties, miss_river, .predicate = st_intersects)
+
+# Join cities to counties
+cities_miss <- st_join(cities_sf, counties_miss, join = st_intersects, left = FALSE)
+
+urban_pop_by_county <- cities_miss %>%
+  group_by(GEOID) %>%              # or use COUNTYFP or NAME depending on what column exists
+  summarise(urban_pop = sum(population, na.rm = TRUE))
+
+
+#drop geometry to join the table
+urban_pop_by_county_df <- st_drop_geometry(urban_pop_by_county)
+
+urban_pop_by_county_sf <- urban_pop_by_county_df %>%
+  left_join(counties_miss["geometry"], by = "GEOID") 
+
+urban_pop_by_county_sf <- urban_pop_by_county_df %>%
+  left_join(counties_miss["geometry"], by = "GEOID")
+
+
+
+# Add geometry to population summary (urban_pop_by_county_df) based on GEOID
+urban_pop_by_county_sf <- urban_pop_by_county_df %>%
+  left_join(counties_miss["geometry"], by = "GEOID")  # Replace GEOID if necessary
+
+
+

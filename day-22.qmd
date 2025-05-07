@@ -1,0 +1,172 @@
+---
+title: "day-22"
+author: "Megan Hoover"
+
+format:
+  html:
+    self-contained: true
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load Libraries
+```{r}
+library(dataRetrieval)
+library(tidyverse)
+library(tsibble) #need for the yearmonth class
+library(plotly)
+library(feasts) #for subseries
+library(forecast)
+library(tidymodels)
+library(modeltime) #needed for modeltime forecast
+library(timetk)
+```
+
+
+Read in the Poudre data from last assignment
+```{r}
+# Example: Cache la Poudre River at Mouth (USGS site 06752260)
+poudre_flow <- readNWISdv(siteNumber = "06752260",    # Download data from USGS for site 06752260
+                          parameterCd = "00060",      # Parameter code 00060 = discharge in cfs)
+                          startDate = "2013-01-01",   # Set the start date
+                          endDate = "2023-12-31") |>  # Set the end date
+  renameNWISColumns() |>                              # Rename columns to standard names (e.g., "Flow", "Date")
+  mutate(Date = yearmonth(Date)) |>                   # Convert daily Date values into a year-month format (e.g., "2023 Jan")
+  group_by(Date) |>                                   # Group the data by the new monthly Date
+  summarise(Flow = mean(Flow))                       # Calculate the average daily flow for each month
+```
+ 1. Convert to tsibble
+Use as_tsibble() to convert the data.frame into a tsibble object. This will allow you to use the feast functions for time series analysis.
+```{r}
+# Date column is already in year-month format (from yearmonth()). Just need a proper Date object and data is sorted:
+
+poudre_flow <- poudre_flow %>%
+  mutate(Date = as.Date(Date)) %>% 
+  arrange(Date)
+
+#poudre_tsibble <- poudre_flow |> 
+  #as_tsibble(index = Date)
+
+#create time series split
+splits <- time_series_split(
+  data = poudre_flow,
+  date_var = Date,
+  assess = "12 months",
+  cumulative = TRUE)
+
+training<-training(splits)
+testing<- testing(splits)
+```
+
+
+# Use the prophet_reg(), and arima_reg() function to create a Prophet model for forecasting.
+
+```{r}
+#make list of named models
+
+# 1. Create a named list of models
+mods <- list(
+  arima = arima_reg() |> set_engine("auto_arima"),
+  prophet = prophet_reg() |> set_engine("prophet"))
+
+
+#fit models
+fitted_models <- mods %>%
+  map(~ fit(.x, Flow ~ Date, data = training(splits)))
+
+#Create model time table from fitted models
+models_tbl <- modeltime_table(
+  fitted_models$prophet,
+  fitted_models$arima
+)
+
+```
+
+# Use modeltime to forecast the next 12 months of streamflow data in the Poudre River based on last assignment (day 21).
+
+```{r}
+# Calibrate models
+calibration_tbl <- models_tbl %>%
+   modeltime_calibrate(new_data = testing(splits), quiet = FALSE)
+
+# Forecast next 12 months
+forecast_tbl <- calibration_tbl %>%
+  modeltime_forecast(
+    new_data = testing(splits),
+    actual_data = poudre_flow)
+
+forecast<- forecast_tbl %>%
+  plot_modeltime_forecast(
+    .interactive = FALSE,
+    .conf_interval_show = TRUE
+  )
+
+# Generate the forecast and plot it
+calibration_tbl %>%
+  modeltime_forecast(
+    new_data = testing(splits),
+    actual_data = poudre_tsibble
+  ) %>%
+  plot_modeltime_forecast()
+```
+
+
+# Use dataRetrieval to download daily streamflow for the next 12 months. Aggregate this data to monthly averages and compare it to the predictions made by your modeltime model.
+
+```{r}
+
+# start from the end date of last data and end 12 months ahead
+
+# Example: Cache la Poudre River at Mouth (USGS site 06752260)
+poudre_flow_12 <- readNWISdv(siteNumber = "06752260",    # Download data from USGS for site 06752260
+                          parameterCd = "00060",      # Parameter code 00060 = discharge in cfs)
+                          startDate = "2023-12-31",   # Set the start date
+                          endDate = "2024-12-31") |>  # Set the end date
+  renameNWISColumns() |>                              # Rename columns to standard names (e.g., "Flow", "Date")
+  mutate(Date = yearmonth(Date)) |>                   # Convert daily Date values into a year-month format (e.g., "2023 Jan")
+  group_by(Date) |>                                   # Group the data by the new monthly Date
+  summarise(Flow = mean(Flow)) 
+
+
+#make a tsibble
+poudre_flow_12 <- poudre_flow_12 %>%
+  mutate(Date = as.Date(Date)) %>% 
+  arrange(Date)
+
+#create time series split
+splits1 <- time_series_split(
+  data = poudre_flow_12,
+  date_var = Date,
+  assess = "12 months",
+  cumulative = TRUE)
+
+training<-training(splits)
+testing<- testing(splits)
+
+
+# Forecast next 12 months
+forecast_tbl1 <- calibration_tbl %>%
+  modeltime_forecast(
+    new_data = testing(splits),
+    actual_data = poudre_flow_12)
+
+
+forecast<- forecast_tbl %>%
+  plot_modeltime_forecast(
+    .interactive = FALSE,
+    .conf_interval_show = TRUE
+  )
+
+# Generate the forecast and plot it
+calibration_tbl1 %>%
+  modeltime_forecast(
+    new_data = testing(splits),
+    actual_data = poudre_tsibble
+  ) %>%
+  plot_modeltime_forecast()
+
+```
+```
+

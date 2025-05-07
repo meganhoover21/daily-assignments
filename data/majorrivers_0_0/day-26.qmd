@@ -1,0 +1,64 @@
+---
+title: "day-26"
+format: html
+---
+
+
+Load Libraries
+```{r}
+library(ggpubr)
+library(raster)
+library(tidyverse)
+library(readr)
+library(terra)
+library(glue)
+```
+
+
+Read in Data. To enable terra::rast() in R to read a raster file directly from a GitHub repository using a VSI-prefixed URL
+```{r}
+url <- '/vsicurl/https://raw.githubusercontent.com/mikejohnson51/csu-ess-330/main/resources/foco-elev-cm.tif'
+
+r <- terra::rast(url)
+
+print(r)
+```
+
+Once the date is read in, describe the structure of the data in a few sentences:
+
+The structure of the data is in a spatRaster class and it has a maximum value of 197781 and a minimum value of 146730. The dimensions are 725 rows, 572 columns, and 1 nlayer. The data is currently in a NAD83 datum that uses the units m. 
+
+
+Natively, the data has a horizontal unit of cm. Multiply the data by 0.0328084 to convert the data to feet.
+```{r}
+#  x and y units are in meters, not the elevation values. convert elev from cm-->ft
+r_ft <- r * 0.0328084
+```
+
+
+Extract the values from the raster into a data.frame by using the dataframe=TRUE parameter in the values() function.
+```{r}
+#gives you a data frame with each row representing a raster cell and its corresponding elevation in feet.
+
+ #Extract raster values into a data frame (one column of elevation values)
+df <- terra::values(r_ft, dataframe = TRUE)
+head(df)
+```
+
+Create a density plot using ggpubr and save it with ggsave
+```{r}
+# Create a density plot using ggpubr
+p <- ggdensity(df, x = names(df),      # Use the column of elevation values
+               fill = "lightblue",     # Fill color for the density curve
+               color = "black",        # Border color of the curve
+               add = "mean",           # Add a vertical line for the mean
+               rug = TRUE) +           # Add a rug plot (ticks) along the x-axis
+  labs(title = "Elevation Density Plot",   # Plot title
+       x = "Elevation (feet)",             # X-axis label
+       y = "Density") +                    # Y-axis label
+  theme_pubr()                             # Apply a clean ggpubr theme
+
+# Save plot as PNG
+ggsave("elevation_density.png", plot = p, width = 6, height = 4, dpi = 300)
+```
+
