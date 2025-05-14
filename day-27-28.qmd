@@ -1,0 +1,183 @@
+---
+title: "day-27-28"
+format: html
+---
+
+Load libraries:
+```{r}
+library(sf)
+library(terra)
+library(osmdata)
+library(dplyr)
+library(tidyverse)
+library(glue)
+
+```
+# Define River Object
+
+We we extract a river profile from the Poudre River in Fort Collins, CO.
+
+1. To do use the code from lecture to extract all waterways from OpenStreetMap for the Bounding Box of Fort Collins, CO.
+```{r}
+# Get a numeric bounding box (what opq needs)
+bbox <- getbb("Fort Collins, Colorado")
+
+```
+
+
+2. Filter the osm_lines object to only include the Cache la Poudre River and merge the lines into a single line object with st_union(). Be sure to convert the object to a sf object with st_as_sf() when done.
+```{r}
+# Extract all waterways within the bounding box
+waterways <- opq(bbox = bbox) %>%
+  add_osm_feature(key = "waterway") %>%
+  osmdata_sf()
+
+# Get the lines data
+osm_lines <- waterways$osm_lines
+
+# Filter lines for Cache la Poudre River
+poudre_river <- osm_lines %>%
+  filter(grepl("Poudre", name, ignore.case = TRUE))
+
+# Combine lines into one feature
+poudre_river_union <- st_union(poudre_river)
+
+# Convert back to sf object
+poudre_river_union <- st_as_sf(poudre_river_union)
+
+```
+
+
+3. Use st_length() to compute the length of the river for future calculations.
+```{r}
+# Set the coordinate reference system to a projected CRS for accurate length
+poudre_river_union <- st_transform(poudre_river_union, 26913)  # NAD83 / UTM zone 13N
+
+# Calculate length
+river_length <- st_length(poudre_river_union)
+print(river_length)
+```
+
+
+4.Use st_cast() to convert the river object to a POINT object and save it as poudre_pts for latter extraction tasks
+```{r}
+# Cast to LINESTRING (if needed), then to POINT
+poudre_pts <- st_cast(poudre_river_union, "LINESTRING") %>%
+  st_cast("POINT")
+```
+
+
+
+# Define DEM Object
+
+
+5. Use the rast() function to read in the DEM file from the lynker-spatial S3 bucket shared in last assignment. Be sure to use the vsis3 prefix!
+```{r}
+url <- '/vsicurl/https://raw.githubusercontent.com/mikejohnson51/csu-ess-330/main/resources/foco-elev-cm.tif'
+
+r <- terra::rast(url)
+```
+
+
+
+## Extract River Profile
+
+
+6. Use the extract() function to extract the elevation values from the DEM at the points along the river.
+```{r}
+# Extract elevation from DEM at river points
+elev_vals <- terra::extract(r, vect(poudre_pts))
+
+```
+
+
+7. Use bind_cols() to combine the spatial river points with the extracted elevation values.
+```{r}
+# Combine with river point data
+river_profile <- bind_cols(poudre_pts, elev_vals)
+
+```
+
+8. Use mutate() to add a new column called ID that is a sequence from 1 to the number of points in the river (n()).
+```{r}
+# Add ID column
+river_profile <- river_profile %>%
+  mutate(ID = row_number())
+```
+
+
+9. Compute Sinuosity
+Use the st_distance() function to compute the straight line distance between the first and last points in the river.
+```{r}
+# Sinuosity = (Total river length) / (Straight-line distance from start to end)
+# Get start and end points
+start_pt <- st_geometry(river_profile)[1]
+end_pt <- st_geometry(river_profile)[nrow(river_profile)]
+
+# Compute straight-line distance
+straight_dist <- st_distance(start_pt, end_pt)
+
+```
+
+
+10. Divide the length of the full river (step 3) by this straight line distance to get the sinuosity. Report the value and what it means. Does this value make sense with respect to the complete Poudre River?
+```{r}
+# River length already calculated before
+# Ensure both are in the same CRS (projected)
+straight_dist <- as.numeric(st_distance(start_pt, end_pt))  # meters
+total_length <- as.numeric(st_length(poudre_river_union))   # meters
+
+# Sinuosity
+sinuosity <- total_length / straight_dist
+print(paste("Sinuosity:", round(sinuosity, 2)))
+```
+No this value doesn't make sense, it's really high. A sinuosity of 34.59 implies the river is 34.59 times longer than a straight line between its start and end.
+
+
+
+# Compute Slope
+
+
+11. The slope of a river is the change in elevation between the inlet and outlet divided by the length of the river. Compute this value and report it. Remember the units of the elevation (cm) and of your length!
+```{r}
+# Convert elevation from cm to meters
+elev_start <- river_profile$dem[1] / 100
+elev_end <- river_profile$dem[nrow(river_profile)] / 100
+
+# Elevation change
+elev_change <- elev_start - elev_end  # in meters
+
+# Slope (m/m)
+slope <- elev_change / total_length
+
+# Print result
+print(paste("Slope:", round(slope, 4), "m/m"))
+```
+
+
+# Map Profile: 2 ways
+
+Last, we want to visualize the river profile.
+
+12. Use ggplot() to create a line plot of the elevation values along the river. Be sure to use the ID column as the x-axis and the dem column as the y-axis. Add nice lables and themese to your chart.
+```{r}
+ggplot(river_profile, aes(x = ID, y = dem / 100)) +  # convert to meters
+  geom_line(color = "steelblue", size = 1) +
+  labs(title = "River Elevation Profile",
+       x = "Point ID Along River",
+       y = "Elevation (meters)") +
+  theme_minimal(base_size = 14) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+13. Use ggplot() to plot the spatial mpa of the river profile. Use the geom_sf() function to plot the river and color it by elevation. Be sure to use a nice color scale and theme.
+```{r}
+ggplot(river_profile) +
+  geom_sf(aes(color = dem / 100), size = 0.8) +
+  scale_color_viridis_c(name = "Elevation (m)") +
+  labs(title = "Spatial River Profile (Colored by Elevation)") +
+  theme_minimal(base_size = 14) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
